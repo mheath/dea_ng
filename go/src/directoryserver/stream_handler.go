@@ -59,7 +59,13 @@ func (x *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		x.IdleTimeout = 1 * time.Minute
 	}
 
-	for stop := false; !stop; {
+	// Flush content before starting stream
+	_, err = io.Copy(u, x.File)
+	if err != nil {
+		return
+	}
+
+	for {
 		select {
 		case <-time.After(x.IdleTimeout):
 			hj, ok := w.(http.Hijacker)
@@ -78,30 +84,31 @@ func (x *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 
+			// Close connection forcibly to prevent sending EOF chunk
+			// since this is not an _expected_ end of stream
 			conn.Close()
+			return
 
-			stop = true
 		case ev, ok := <-watcher.Event:
-			if !ok {
-				stop = true
-				break
+			if !ok || ev.IsRename() {
+				return
 			}
 
-			// Break on rename
-			if ev.IsRename() {
-				stop = true
-				break
+			// Since we keep the inode open
+			// we will not receive delete_self notification
+			_, err = os.Stat(x.File.Name())
+			if err != nil {
+				return
 			}
 
 			_, err = io.Copy(u, x.File)
 			if err != nil {
-				stop = true
-				break
+				return
 			}
+
 		case _, ok := <-watcher.Error:
 			if !ok {
-				stop = true
-				break
+				return
 			}
 		}
 	}
