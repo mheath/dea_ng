@@ -489,7 +489,7 @@ module Dea
 
       register_directory_server_v2
 
-      if defined? message.hosts
+      if message.has_key?('hosts')
         message.hosts.each do |host|
           @router_registry.update(host)
         end
