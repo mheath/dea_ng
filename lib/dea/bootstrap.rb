@@ -24,6 +24,7 @@ require "dea/protocol"
 require "dea/resource_manager"
 require "dea/router_client"
 require "dea/staging_task"
+require "dea/firewall/router_registry"
 Dir[File.join(File.dirname(__FILE__), "responders/*.rb")].each { |f| require(f) }
 
 module Dea
@@ -78,6 +79,7 @@ module Dea
       setup_sweepers
       setup_nats
       setup_router_client
+      setup_router_registry
     end
 
     def setup_logging
@@ -133,6 +135,10 @@ module Dea
 
     def setup_router_client
       @router_client = Dea::RouterClient.new(self)
+    end
+
+    def setup_router_registry
+      @router_registry = Dea::Firewall::RouterRegistry.new(config)
     end
 
     def setup_signal_handlers
@@ -482,6 +488,14 @@ module Dea
       end
 
       register_directory_server_v2
+
+      if defined? message.hosts
+        message.hosts.each do |host|
+          @router_registry.update(host)
+        end
+      else
+        logger.warn("Received 'router.start' message that is missing host information. This router will be blocked by firewall rules.")
+      end
     end
 
     def handle_dea_status(message)
@@ -742,6 +756,9 @@ module Dea
         end
       end
     end
+
+    # Firewall support
+
 
     private
 
